@@ -1,0 +1,286 @@
+---
+title: "Untitled"
+author: "JR"
+date: "3/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+
+
+```{r cars}
+
+library(unvotes)
+library(tidyverse)
+library(ggthemes)
+library(lubridate)
+library(ggparliament)
+library(ggtext)
+library(ggdist)
+library(scales)
+library(ggforce)
+library(lubridate)
+```
+
+
+
+```{r pressure, echo=FALSE}
+
+votes<-un_votes
+roll<-un_roll_calls
+issue<-un_roll_call_issues
+issue<-issue[!duplicated(issue[,1]),]
+
+vote_data<-left_join(votes, roll, "rcid")
+vote_data<-left_join(vote_data, issue, "rcid")
+
+caricom<-c("Antigua & Barbuda", "Bahamas", "Barbados", "Belize","Dominica", "Grenada", "Guyana", "Haiti", "Jamaica", "Montserrat","St. Lucia","St. Kitts & Nevis", "St. Vincent & Grenadines", "Suriname","Trinidad & Tobago")
+
+vote_data<-vote_data%>%mutate(cari=ifelse(country %in% caricom, "yes","no"))
+
+vote_data$year<-year(vote_data$date)
+
+cari_votes<-vote_data%>%filter(cari=="yes")
+
+
+
+
+
+
+```
+
+## THE QUestion 
+
+How often does Caricom disagree and On what issues?
+
+
+Step 1 - assign numerical value for yes, no , and abstain --- using maatch gfucntion as seen in Dr. ROb'd screen cast 1 yes abstain 0, no -1
+
+
+```{r}
+
+cari_votes<-cari_votes%>%mutate(vote_n=match(vote, c("no", "abstain","yes"))-2)
+
+
+present<-cari_votes%>%group_by(rcid)%>%filter(vote!="absent")
+
+present%>%group_by(rcid)%>%summarise(totalpresent=n())
+
+unanimous<-cari_votes%>%group_by(year, issue, rcid)%>%summarise(total=sum(vote_n))%>%filter(total==14)
+```
+
+```{r}
+unanimous%>%group_by(issue)%>%summarise(total=n())%>%
+  ggplot(aes(x=issue, y=total))+
+  geom_col()+
+  coord_flip()
+```
+
+
+
+
+
+
+```{r}
+cari_votes%>%filter(rcid==3)
+```
+
+
+
+
+
+
+
+
+```{r}
+total_votes<-cari_votes%>%group_by(year)%>%summarise(total=n())
+unam_votes<-unanimous%>%group_by(year)%>%summarise(total=n())
+percent_votes<-left_join(total_votes, unam_votes, "year")
+
+
+  
+  
+```
+
+
+```{r}
+
+
+cari_votes %>% group_by(date, issue, rcid) %>% summarise(total = sum(vote_n)) %>%
+  ggplot( aes(x = total)) + geom_histogram(colour="white")+
+  theme_fivethirtyeight()
+
+```
+
+
+
+
+```{r}
+#unanimous%>%mutate(year=year(date))%>%group_by(year)%>%summarise(amount=n())%>%
+  #ggplot(aes(x=year, y=amount))+geom_col()+
+  #theme_fivethirtyeight()
+```
+
+
+```{r}
+cari_votes %>% filter(vote == "no" & issue!="NA" & date>"1979-12-31" & country=="Barbados") %>% group_by(issue) %>% summarise(total = n()) %>%
+  ggplot(aes(x = reorder(issue,total), y = total)) + 
+  geom_col()+
+  theme_fivethirtyeight()+
+  coord_flip()
+
+```
+
+```{r}
+cari_votes %>% filter(vote == "yes" & issue!="NA") %>% group_by(issue) %>% summarise(total = n()) %>%
+  ggplot(aes(x = reorder(issue,total), y = total)) + 
+  geom_col()+
+  coord_flip()+
+  theme_fivethirtyeight()
+
+```
+
+
+```{r}
+cari_votes%>%filter(vote=="no"  &   issue!="NA" & country=="Barbados" & date>"1979-12-31")%>%group_by(rcid)%>%select(year, rcid,  country, issue, short, descr)%>%group_by(year, issue)%>%summarise(total=n())%>%
+  ggplot(aes(x=year, y=total, group=issue, fill=issue))+geom_col()+
+  theme_fivethirtyeight()+
+  coord_cartesian(clip = "off")
+  
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+no_abstain<-vote_data%>%filter(vote!="abstain")%>%group_by(country,issue)%>%summarise(total_noabs=n())
+total<-vote_data%>%group_by(country,issue)%>%summarise(total=n())
+percent_noabs<-left_join(total, no_abstain, c("country","issue"))
+percent_noabs$prop<-percent_noabs$total_noabs/percent_noabs$total
+
+
+```
+
+```{r}
+top<-percent_noabs%>%group_by(country)%>%summarise(avg=mean(prop))%>%arrange(desc(avg))%>%slice(1:10)
+bottom<-percent_noabs%>%group_by(country)%>%summarise(avg=mean(prop))%>%arrange(avg)%>%slice(1:10)
+```
+
+```{r}
+
+  ggplot(top,aes(x=reorder(country,avg), y=abs(avg-1)))+geom_col()+coord_flip()+
+  theme_fivethirtyeight()+
+  scale_y_continuous(labels =percent )+
+  labs(title="Countries with the srtongest Opinions", subtitle = "Top 10 countries with the lowest percentage of `Abstain` votes", caption = "#Tidy Tuesday UNVOTES")+
+  theme(plot.title.position = "plot",
+        panel.grid.major.y = element_blank())
+  
+```
+
+```{r}
+
+  ggplot(bottom, aes(x=reorder(country,abs(avg-1)), y=0))+
+   geom_mark_circle(aes(x=reorder(country,abs(avg-1)), y=abs(avg-1),label=percent(abs(bottom$avg-1))), fill="steelblue", colour="white", con.cap = 5)+
+  geom_segment(xend=reorder(bottom$country,abs(bottom$avg-1)), yend=abs(bottom$avg-1), size=4, linejoin = "round", colour="steelblue",lineend = "round"
+                 )+
+  coord_flip()+theme_fivethirtyeight()+
+  scale_y_continuous(labels =percent )+
+  labs(title="The Least Opiniated Countries", subtitle = "Top 10 Countries with the highetst percentage of `Abstain` votes")+
+  theme(plot.title.position = "plot",
+        panel.grid.major.y = element_blank())
+```
+
+
+
+```{r}
+issue_stance<-vote_data%>%filter(date>"1999-12-31")%>%group_by(country, issue)%>%summarise(total_votes=n(), 
+                                          yes_votes=sum(vote=="yes"),
+                                          no_votes=sum(vote=="no"),
+                                          abstain_votes=sum(vote=="abstain"),
+                                          per_yes=yes_votes/total_votes,
+                                          per_no=no_votes/total_votes,
+                                          per_abs=abstain_votes/total_votes)
+  
+      
+
+```
+
+```{r}
+issue_stance %>% filter(country == "Barbados" & issue!="NA") %>% 
+  ggplot(aes(x = issue, y = per_yes)) + 
+  geom_point() + 
+  geom_point(data=issue_stance %>% filter(country == "Barbados"), aes(x=issue, y=per_no))+
+  geom_point(data=issue_stance %>% filter(country == "Barbados"), aes(x=issue, y=per_abs))+
+    coord_flip()+
+  theme_fivethirtyeight()
+```
+
+
+```{r}
+issue_stance %>% filter(country == "Barbados" & issue!="NA" ) %>% 
+  ggplot(aes(x = issue, y = per_no)) + 
+  geom_col()+
+  coord_flip()+
+  scale_y_continuous(labels = percent)+
+  theme_fivethirtyeight()
+```
+
+
+
+```{r}
+vote_data%>%filter(issue=="Human rights" & str_detect(descr,"CAPITAL"))%>%group_by(year,rcid)%>%summarise(t=n())
+```
+
+```{r}
+vote_data%>%filter(issue=="Human rights" & rcid==6129 & vote=="no")%>%group_by(vote)%>%
+  ggplot(aes(x=vote, y=country))+
+  geom_text(aes(label=country, colour=cari))+
+  labs(title="Moratorium on the use of the death penalty")+
+  theme_void()+
+  theme(axis.text.y = element_blank(),
+        legend.position = "none")
+  
+```
+
+
+
+
+
+```{r}
+vote_data%>%filter(issue!="NA"& cari=="yes" & vote=="no" & date>"1999-12-31")%>%group_by(issue)%>%summarise(count=n())
+```
+```{r}
+table(cari_no$country, cari_no$descr)
+```
+
+
+
+```{r}
+vote_data%>%filter(vote=="no" & cari=="yes" & issue!="NA" & year>1972)%>%group_by(year, issue)%>%summarise(count=n())
+```
+
