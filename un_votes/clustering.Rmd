@@ -1,0 +1,351 @@
+---
+title: "Clustering"
+author: "JR"
+date: "3/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# UNSUPERVISED LEARNING 
+
+using UN votes package
+
+
+```{r cars}
+
+library(tidyverse)
+library(unvotes)
+library(cluster)
+library(factoextra)
+library(tidyr)
+library(lubridate)
+library(ggthemes)
+library(purrr)
+library(broom)
+library(ggforce)
+library(ggrepel)
+library(ggmap)
+
+```
+
+
+
+```{r pressure, echo=FALSE}
+votes<-un_votes
+roll<-un_roll_calls
+issue<-un_roll_call_issues
+issue<-issue[!duplicated(issue[,1]),]
+
+vote_data<-left_join(votes, roll, "rcid")
+vote_data<-left_join(vote_data, issue, "rcid")
+
+caricom<-c("Antigua & Barbuda", "Bahamas", "Barbados", "Belize","Dominica", "Grenada", "Guyana", "Haiti", "Jamaica", "Montserrat","St. Lucia","St. Kitts & Nevis", "St. Vincent & Grenadines", "Suriname","Trinidad & Tobago")
+
+vote_data<-vote_data%>%mutate(cari=ifelse(country %in% caricom, "yes","no"))
+
+vote_data$year<-year(vote_data$date)
+
+vote_data<-vote_data%>%mutate(vote_n=match(vote, c("no", "abstain","yes")))
+vote_data<-vote_data%>%filter(issue!="NA")
+vote_data<-vote_data%>%mutate(issue_n=match(issue, c("Colonialism", "Arms control and disarmament","Human rights", "Nuclear weapons and nuclear material", "Palestinian conflict", "Economic development")))
+
+
+
+
+```
+## K MEANS CLUSTERING
+
+
+Things to note 
+
+1. clustering is on numerical data only
+2. data needs to be in a wide format.
+3. scale date to normal distribution
+4. 
+
+
+
+
+```{r}
+v<-vote_data%>%filter(date>"1999-12-31")%>%select(country,rcid,  vote_n)
+
+
+
+v<-v%>%pivot_wider(names_from = rcid, values_from = vote_n, values_fill = 0, names_prefix="rcid_")
+
+
+
+V<-v
+
+v<-column_to_rownames(v, var="country")
+
+v<-scale(v)
+
+
+
+vcluster<-kmeans(v, 3, nstart = 20)
+
+
+v<-as.data.frame(v)
+
+v$cari<-ifelse(rownames(v)%in% caricom, 1, 0)
+
+
+```
+
+
+
+
+```{r}
+
+
+
+fviz_cluster(
+  vcluster,
+  data = v,
+  geom = "point",
+  ellipse = FALSE,
+  show.clust.cent = FALSE,
+  shape=1,
+  pointsize = 2.5,
+  alpha = .6,
+  
+)+
+  #geom_point( colour=as.factor(v$cari),
+  #fill=as.factor(v$cari))+
+  #geom_mark_ellipse(aes(group=cluster),colour="grey")+
+  geom_text_repel(label=rownames(v),  hjust="inward")+
+  labs(title="TEST", caption = "UNVOTES")+
+  theme_fivethirtyeight()+
+  coord_cartesian(clip = "off")+
+  theme(plot.title.position = "panel")
+  
+  
+```
+
+
+```{r}
+v$cluster<-vcluster$cluster
+m_data<-v%>%select(cluster)
+m_data$country<-rownames(v)
+m_data$cari<-if_else(m_data$country %in% caricom, "yes", "no")
+m_data$cluster<-as.factor(m_data$cluster)
+m_data$region<-m_data$country
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+library(rnaturalearth)
+library(sf)
+library(ggalt)
+library(countrycode)
+
+
+```
+
+
+```{r}
+world_ne<-ne_countries(scale="medium", returnclass = "sf")
+#world_map<-tidy(world_ne)
+
+
+m_data$iso_a2<-countrycode(m_data$country, "country.name", "iso2c")
+
+world_map<-merge(world_ne, m_data, "iso_a2")
+
+
+
+```
+
+
+```{r}
+ggplot(world_map)+geom_sf(aes(fill=cluster),colour="#dddddd", alpha=.9, size=.2)+
+  geom_sf_text(data=world_map%>%filter(cluster==1), aes(label=admin), check_overlap = TRUE, hjust="inward", size=4, colour="#2a3135")+
+  coord_sf(clip = "off")+theme_map()+
+  labs(title = "MAP OF VOTE CLUSTERS",
+       caption = "UNVOTES | #TidyTuesday")+
+  scale_fill_manual(values = c("#63193b","#6da7de",  "#dee000"))+
+  theme(plot.title.position = "plot",
+        plot.title = element_text(face="bold", size=18),
+        panel.background = element_rect(fill="#dddddd",colour="#dddddd"),
+        plot.background = element_rect(fill="#dddddd", colour="#dddddd"),
+        legend.background = element_rect(fill="#dddddd", colour = "#dddddd"),
+        #legend.position = "top"
+        )
+
+
+
+```
+
+
+```{r}
+bloc_plot<-
+  ggplot(world_map)+
+  geom_sf(aes(fill=cluster),colour="#2a3135", alpha=.6, size=.4)+
+  coord_sf()+
+  theme_map()+
+  labs(title = "VOTING BLOCS",
+       subtitle = "Cluster analysis of UN General Assembly votes 2000 - 2019",
+       caption="#TidyTuesday | Source: UN Votes, Harvard Dataverse \n @jamaalroach")+
+  scale_fill_discrete(name="BLOCS Include:", 
+                      labels=c("US, Central Africa, \n Israel, Macedonia...", 
+                               "\n Most of the world\n ",
+                               "Canada, Europe, \nAustrailia, Japan, New Zealand..."),
+                      type =c("#63193b","#6da7de",  "#dee000") )+
+  theme(legend.background = element_rect(fill="#2a3135", colour = "#2a3135"),
+        legend.text = element_text(colour="#dddddd", size=10),
+        legend.key = element_rect(fill="#2a3135"),
+        legend.title = element_text(colour = "#dddddd", size=10
+),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(colour="#dddddd", size=14),
+        plot.caption = element_text(colour="#dddddd", size=8),
+        plot.caption.position = "plot",
+        plot.title = element_text(face="bold", colour="#dddddd", size = 16),
+        panel.background = element_rect(fill="#2a3135",colour="#2a3135"),
+        plot.background = element_rect(fill="#2a3135", colour="#2a3135"),
+        plot.margin = margin(25,25,10,25))
+
+
+ggsave(bloc_plot, filename = "bloc_plot.png", units = "in", width = 11, height = 8.5)
+```
+
+
+
+```{r}
+world_map2 <- world_map %>%
+  group_by(group) %>%              # each group corresponds to a unique polygon
+  arrange(order) %>%               # sort points in the appropriate sequence
+  slice(c(1:n(), 1)) %>%           # repeat first row after last row
+  mutate(order = seq(1, n())) %>%  # define new order for n+1 rows
+  ungroup()
+
+```
+
+
+
+```{r}
+m_data%>%group_by(cluster)%>%summarise(count=n())
+```
+
+
+
+```{r}
+
+cari<-vote_data%>%filter(cari=="yes" & date>"1999-12-31")%>%select(country,rcid,  vote_n)
+
+cari$rcid<-as.numeric(cari$rcid)
+
+
+
+cari<-cari%>%pivot_wider(names_from = rcid, values_from = vote_n, values_fill = 0, names_prefix="rcid_")
+
+cari<-column_to_rownames(cari, var="country")
+
+
+cari<-cari[-which(apply(cari, 2, var)==0)]  # removes columns with zero variance ..required to run kmeans
+
+
+
+
+
+
+
+
+
+caricluster<-kmeans(cari, 2, nstart = 100)
+
+cari$cluster<-caricluster$cluster
+```
+
+```{r}
+fviz_cluster(
+  caricluster,
+  data = cari,
+  geom="point",
+  repel = TRUE,
+  ellipse = FALSE,
+  show.clust.cent = FALSE,
+  shape = 21,
+  pointsize = 2,
+  colour="steelblue",
+  fill="steelblue",
+  alpha = .6)+
+  geom_mark_ellipse(aes(group=cluster, label=cluster), colour="gray")+
+  geom_text_repel(label=rownames(cari),  hjust="inward")+
+  labs(title="CARICOM CLUSTER ANALYSIS", caption = "UNVOTES")+
+  theme_fivethirtyeight()+
+  coord_cartesian(clip="off")
+  
+```
+
+
+```{r}
+cari_tidy<-tidy(caricluster)
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+```{r}
+
+
+```
+
+
+## PRINCIPAL COMPONENT ANALYSIS
+
+
+```{r}
+library(recipes)
+```
+```{r}
+vote_rec<-recipe(~.,data = V)%>%
+  update_role(country, new_role = "id")%>%
+  step_pca(all_predictors())
+
+vote_prep<-prep(vote_rec)
+
+vote_bake<-bake(vote_prep, new_data = NULL)
+```
+
+```{r}
+ggplot(vote_bake, aes(PC1, PC2, label=country))+
+  geom_point(colour="steelblue", alpha=.7, size=2)+
+  geom_text(check_overlap = TRUE, hjust="inward")+
+  theme_fivethirtyeight()
+```
+
+
+###UMAP
+
+```{r}
+
+```
+
