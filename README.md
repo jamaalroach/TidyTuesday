@@ -1,3 +1,2 @@
 # TidyTuesday
-My Tidy Tuesday Submissions
-Plot and code for my #TidyTuesday submissions
+My Plots and Code for the #TidyTuesday Challenge
